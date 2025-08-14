@@ -192,8 +192,14 @@ namespace MinimalChat
                 Text = text
             };
 
-            await _service.SendMessageAsync(req, CancellationToken.None).ConfigureAwait(false);
+            // Single send; capture ack and advance last id to avoid duplicate when stream echoes it back.
+            var ack = await _service.SendMessageAsync(req, CancellationToken.None).ConfigureAwait(false);
+            if (ack != null && ack.Id > _lastReceivedId)
+            {
+                _lastReceivedId = ack.Id;
+            }
 
+            // Local echo for snappy UX.
             var line = _formatter.FormatOutgoing(name, text, DateTime.Now);
             AppendAndRender(line);
 
