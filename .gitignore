@@ -98,3 +98,31 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# MacOS cruft
+.DS_Store
+
+# Backend .NET projects - keep sources, ignore build outputs
+
+# Allow backend project/solution files (needed for dotnet restore/build)
+!Backend/**/*.csproj
+!Backend/**/*.sln
+!Backend/**/*.props
+!Backend/**/*.targets
+
+# Ignore .NET build outputs
+Backend/**/bin/
+Backend/**/obj/
+
+# Ignore test results
+TestResult*/
+
+# Ignore NuGet packages
+*.nupkg
+*.snupkg
+
+# Ignore user-specific IDE files
+*.user
+*.suo
+.vscode/
+.idea/

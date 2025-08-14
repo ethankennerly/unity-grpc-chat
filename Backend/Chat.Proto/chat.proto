@@ -1,0 +1,29 @@
+syntax = "proto3";
+option csharp_namespace = "Chat.Proto";
+package chat;
+
+message SendMessageRequest {
+  string sender = 1;
+  string text = 2;
+}
+
+message SendMessageAck {
+  int64 id = 1;
+  string createdAt = 2; // ISO-8601 UTC
+}
+
+message ChatMessage {
+  int64 id = 1;
+  string sender = 2;
+  string text = 3;
+  string createdAt = 4;
+}
+
+message StreamRequest {
+  int64 sinceId = 1;
+}
+
+service ChatService {
+  rpc SendMessage (SendMessageRequest) returns (SendMessageAck);
+  rpc StreamMessages (StreamRequest) returns (stream ChatMessage);
+}
