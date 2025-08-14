@@ -98,15 +98,7 @@ namespace MinimalChat
 
         private async void OnSendClicked()
         {
-            try
-            {
-                await SendFromViewAsync();
-            }
-            catch (Exception ex)
-            {
-                var msg = "[warn] " + ex.Message;
-                _view.ShowWarning(msg);
-            }
+            await SendFromViewAsync();
         }
 
         private void SwitchService(bool force)

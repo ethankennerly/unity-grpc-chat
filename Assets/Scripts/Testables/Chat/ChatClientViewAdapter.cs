@@ -1,18 +1,21 @@
+using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace MinimalChat
 {
     /// <summary>
-    /// Minimal view adapter. Forwards UI to presenter; no business logic here.
+    /// Minimal view adapter. Buffers all updates and applies them on the main thread in Update().
+    /// This prevents any background thread from touching Unity/TMP APIs.
     /// </summary>
     public sealed class ChatClientViewAdapter : MonoBehaviour, IChatView
     {
-        [SerializeField] private InputField _displayNameInput;
-        [SerializeField] private InputField _messageInput;
+        [SerializeField] private TMP_InputField _displayNameInput;
+        [SerializeField] private TMP_InputField _messageInput;
         [SerializeField] private Button _sendButton;
         [SerializeField] private Toggle _loopbackToggle;
-        [SerializeField] private Text _messagesText;
+        [SerializeField] private TMP_Text _messagesText;
 
         private ChatClientPresenter _presenter;
         private readonly IChatServiceFactory _factory = new LoopbackOrRemoteFactory();
@@ -20,8 +23,24 @@ namespace MinimalChat
         public event System.Action SendClicked;
         public event System.Action LoopbackChanged;
 
+        // Gate for cross-thread buffers.
+        private readonly object _uiGate = new object();
+
+        // Pending full messages snapshot.
+        private string _pendingMessages;
+        private bool _hasPendingMessages;
+        private bool _pendingClearInput;
+
+        // Pending warning lines (raw, without "[warn] ").
+        private readonly List<string> _pendingWarnings = new List<string>(8);
+
+        // Pending display name set.
+        private string _pendingDisplayName;
+        private bool _hasPendingDisplayName;
+
         private void Awake()
         {
+            // Wire UI events -> presenter events (main thread).
             if (_sendButton != null)
             {
                 _sendButton.onClick.AddListener(() =>
@@ -47,6 +66,16 @@ namespace MinimalChat
 
         private void OnEnable()
         {
+            // Reset buffers to avoid replaying stale warnings/snapshots.
+            lock (_uiGate)
+            {
+                _pendingMessages = null;
+                _hasPendingMessages = false;
+                _pendingWarnings.Clear();
+                _pendingDisplayName = null;
+                _hasPendingDisplayName = false;
+            }
+
             _presenter = new ChatClientPresenter(this, _factory);
             _presenter.Start();
         }
@@ -60,48 +89,153 @@ namespace MinimalChat
 
             await _presenter.StopAsync();
             _presenter = null;
+
+            // Drop any pending UI work on disable.
+            lock (_uiGate)
+            {
+                _pendingMessages = null;
+                _hasPendingMessages = false;
+                _pendingWarnings.Clear();
+                _pendingDisplayName = null;
+                _hasPendingDisplayName = false;
+            }
         }
 
+        private void Update()
+        {
+            // Apply pending display name.
+            if (_displayNameInput != null)
+            {
+                string name = null;
+                bool applyName = false;
+
+                lock (_uiGate)
+                {
+                    if (_hasPendingDisplayName)
+                    {
+                        name = _pendingDisplayName ?? string.Empty;
+                        _pendingDisplayName = null;
+                        _hasPendingDisplayName = false;
+                        applyName = true;
+                    }
+                }
+
+                if (applyName)
+                {
+                    _displayNameInput.text = name;
+                }
+            }
+
+            // Apply pending full messages snapshot.
+            if (_messagesText != null)
+            {
+                string snapshot = null;
+                bool applySnapshot = false;
+
+                lock (_uiGate)
+                {
+                    if (_hasPendingMessages)
+                    {
+                        snapshot = _pendingMessages ?? string.Empty;
+                        _pendingMessages = null;
+                        _hasPendingMessages = false;
+                        applySnapshot = true;
+                    }
+                }
+
+                if (applySnapshot)
+                {
+                    _messagesText.text = snapshot;
+                }
+
+                // Apply queued warnings.
+                System.Collections.Generic.List<string> warnings = null;
+
+                lock (_uiGate)
+                {
+                    if (_pendingWarnings.Count > 0)
+                    {
+                        warnings = new System.Collections.Generic.List<string>(_pendingWarnings);
+                        _pendingWarnings.Clear();
+                    }
+                }
+
+                if (warnings != null)
+                {
+                    var baseText = _messagesText.text;
+
+                    for (var i = 0; i < warnings.Count; i = i + 1)
+                    {
+                        var raw = warnings[i] ?? string.Empty;
+
+                        // Prevent double "[warn]" if caller already prefixed.
+                        var needsPrefix = !raw.StartsWith("[warn]");
+                        var line = needsPrefix ? "[warn] " + raw : raw;
+
+                        baseText = baseText + "\n" + line;
+                    }
+
+                    _messagesText.text = baseText;
+                }
+            }
+        }
+
+        /// <inheritdoc/>
         public string GetDisplayName()
         {
             if (_displayNameInput == null)
             {
-                return "";
+                return string.Empty;
             }
 
             return _displayNameInput.text;
         }
 
+        /// <inheritdoc/>
         public string GetMessageInput()
         {
             if (_messageInput == null)
             {
-                return "";
+                return string.Empty;
             }
 
             return _messageInput.text;
         }
 
+        /// <inheritdoc/>
         public void SetDisplayName(string value)
         {
-            if (_displayNameInput == null)
+            // Buffer any display name change to the main thread.
+            lock (_uiGate)
             {
-                return;
+                _pendingDisplayName = value ?? string.Empty;
+                _hasPendingDisplayName = true;
             }
-
-            _displayNameInput.text = value;
         }
 
+        /// <inheritdoc/>
         public void ClearMessageInput()
         {
+            _pendingClearInput = true;
+        }
+
+        private void ClearMessageInputOnMainThread()
+        {
+            if (_pendingClearInput)
+            {
+                _pendingClearInput = false;
+                _messageInput.text = string.Empty;
+            }
+            
             if (_messageInput == null)
             {
                 return;
             }
 
-            _messageInput.text = "";
+            _messageInput.text = string.Empty;
         }
 
+        /// <inheritdoc/>
         public bool IsLoopbackEnabled()
         {
             if (_loopbackToggle == null)
@@ -112,26 +246,21 @@ namespace MinimalChat
             return _loopbackToggle.isOn;
         }
 
+        /// <inheritdoc/>
         public void SetMessages(string text)
         {
-            if (_messagesText == null)
+            // Called from background stream; buffer for main-thread apply in Update().
+            lock (_uiGate)
             {
-                return;
+                _pendingMessages = text ?? string.Empty;
+                _hasPendingMessages = true;
             }
-
-            _messagesText.text = text;
         }
 
+        /// <inheritdoc/>
         public void ShowWarning(string text)
         {
-            if (_messagesText == null)
-            {
-                return;
-            }
-
-            var cur = _messagesText.text;
-            var next = cur + "\n[warn] " + text;
-            _messagesText.text = next;
+            Debug.LogWarning("Chat warning: " + (text ?? "<null>"), this);
         }
     }
 }
