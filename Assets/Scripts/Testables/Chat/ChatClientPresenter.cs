@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Debug = UnityEngine.Debug;
+using Random = System.Random;
 
 namespace MinimalChat
 {
@@ -161,7 +163,7 @@ namespace MinimalChat
         {
             if (_service == null)
             {
-                _view.ShowWarning("Service not started.");
+                Debug.LogWarning("Service not started.");
                 return;
             }
 
@@ -173,25 +175,25 @@ namespace MinimalChat
 
             if (name.Length == 0)
             {
-                _view.ShowWarning("Enter a display name.");
+                Debug.LogWarning("Enter a display name.");
                 return;
             }
 
             if (text.Length == 0)
             {
-                _view.ShowWarning("Enter a message.");
+                Debug.LogWarning("Enter a message.");
                 return;
             }
 
             if (text.Length > 1024)
             {
-                _view.ShowWarning("Message exceeds 1024 characters.");
+                Debug.LogWarning("Message exceeds 1024 characters.");
                 return;
             }
 
             if (!IsAscii(name) || !IsAscii(text))
             {
-                _view.ShowWarning("Only ASCII characters are allowed.");
+                Debug.LogWarning("Only ASCII characters are allowed.");
                 return;
             }
 

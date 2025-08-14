@@ -17,8 +17,6 @@ namespace MinimalChat
 
         void SetMessages(string text);
 
-        void ShowWarning(string text);
-
         event System.Action SendClicked;
 
         event System.Action LoopbackChanged;

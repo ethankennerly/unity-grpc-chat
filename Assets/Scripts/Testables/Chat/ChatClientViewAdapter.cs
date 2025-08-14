@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -6,8 +5,9 @@ using UnityEngine.UI;
 namespace MinimalChat
 {
     /// <summary>
-    /// Minimal view adapter. Buffers all updates and applies them on the main thread in Update().
-    /// This prevents any background thread from touching Unity/TMP APIs.
+    /// Minimal view adapter. Buffers UI updates from any thread and applies on main thread.
+    /// Delegates auto-scroll to ChatAutoScroller.
+    /// Includes a runtime UI toggle to force a large font for messages.
     /// </summary>
     public sealed class ChatClientViewAdapter : MonoBehaviour, IChatView
     {
@@ -16,6 +16,13 @@ namespace MinimalChat
         [SerializeField] private Button _sendButton;
         [SerializeField] private Toggle _loopbackToggle;
         [SerializeField] private TMP_Text _messagesText;
+        [SerializeField] private ChatAutoScroller _autoScroller;
+
+        // Debug: when true, force messages font size to 80; when false, restore original.
+        [SerializeField] private bool _debugLargeFont = false;
+        [SerializeField] private Toggle _debugLargeFontToggle;
+
+        private float _originalFontSize;
 
         private ChatClientPresenter _presenter;
         private readonly IChatServiceFactory _factory = new LoopbackOrRemoteFactory();
@@ -23,24 +30,26 @@ namespace MinimalChat
         public event System.Action SendClicked;
         public event System.Action LoopbackChanged;
 
-        // Gate for cross-thread buffers.
         private readonly object _uiGate = new object();
 
-        // Pending full messages snapshot.
         private string _pendingMessages;
         private bool _hasPendingMessages;
-        private bool _pendingClearInput;
 
-        // Pending warning lines (raw, without "[warn] ").
-        private readonly List<string> _pendingWarnings = new List<string>(8);
-
-        // Pending display name set.
         private string _pendingDisplayName;
         private bool _hasPendingDisplayName;
 
+        private bool _pendingClearInput;
+
+        private int _lastAppliedLength;
+
         private void Awake()
         {
-            // Wire UI events -> presenter events (main thread).
+            // Cache author-time font size once, before any runtime changes.
+            if (_messagesText != null)
+            {
+                _originalFontSize = _messagesText.fontSize;
+            }
+
             if (_sendButton != null)
             {
                 _sendButton.onClick.AddListener(() =>
@@ -66,15 +75,25 @@ namespace MinimalChat
 
         private void OnEnable()
         {
-            // Reset buffers to avoid replaying stale warnings/snapshots.
             lock (_uiGate)
             {
                 _pendingMessages = null;
                 _hasPendingMessages = false;
-                _pendingWarnings.Clear();
                 _pendingDisplayName = null;
                 _hasPendingDisplayName = false;
+                _pendingClearInput = false;
             }
+
+            // Apply initial debug font state and wire the runtime toggle.
+            ApplyDebugFontSize();
+
+            if (_debugLargeFontToggle != null)
+            {
+                _debugLargeFontToggle.isOn = _debugLargeFont;
+                _debugLargeFontToggle.onValueChanged.AddListener(OnDebugLargeFontChanged);
+            }
+
+            _lastAppliedLength = _messagesText != null ? _messagesText.text.Length : 0;
 
             _presenter = new ChatClientPresenter(this, _factory);
             _presenter.Start();
@@ -82,105 +101,152 @@ namespace MinimalChat
 
         private async void OnDisable()
         {
-            if (_presenter == null)
+            if (_presenter != null)
             {
-                return;
+                await _presenter.StopAsync();
+                _presenter = null;
             }
 
-            await _presenter.StopAsync();
-            _presenter = null;
+            if (_debugLargeFontToggle != null)
+            {
+                _debugLargeFontToggle.onValueChanged.RemoveListener(OnDebugLargeFontChanged);
+            }
 
-            // Drop any pending UI work on disable.
             lock (_uiGate)
             {
                 _pendingMessages = null;
                 _hasPendingMessages = false;
-                _pendingWarnings.Clear();
                 _pendingDisplayName = null;
                 _hasPendingDisplayName = false;
+                _pendingClearInput = false;
             }
         }
 
         private void Update()
         {
-            // Apply pending display name.
-            if (_displayNameInput != null)
+            ApplyPendingDisplayName();
+            ApplyPendingMessages();
+            ApplyPendingClearInput();
+        }
+
+        private void OnDebugLargeFontChanged(bool isOn)
+        {
+            _debugLargeFont = isOn;
+            ApplyDebugFontSize();
+        }
+
+        private void ApplyDebugFontSize()
+        {
+            if (_messagesText == null)
             {
-                string name = null;
-                bool applyName = false;
-
-                lock (_uiGate)
-                {
-                    if (_hasPendingDisplayName)
-                    {
-                        name = _pendingDisplayName ?? string.Empty;
-                        _pendingDisplayName = null;
-                        _hasPendingDisplayName = false;
-                        applyName = true;
-                    }
-                }
-
-                if (applyName)
-                {
-                    _displayNameInput.text = name;
-                }
+                return;
             }
 
-            // Apply pending full messages snapshot.
-            if (_messagesText != null)
+            if (_debugLargeFont)
             {
-                string snapshot = null;
-                bool applySnapshot = false;
-
-                lock (_uiGate)
+                if (!Mathf.Approximately(_messagesText.fontSize, 80f))
                 {
-                    if (_hasPendingMessages)
-                    {
-                        snapshot = _pendingMessages ?? string.Empty;
-                        _pendingMessages = null;
-                        _hasPendingMessages = false;
-                        applySnapshot = true;
-                    }
+                    _messagesText.fontSize = 80f;
                 }
-
-                if (applySnapshot)
+            }
+            else
+            {
+                if (!Mathf.Approximately(_messagesText.fontSize, _originalFontSize))
                 {
-                    _messagesText.text = snapshot;
-                }
-
-                // Apply queued warnings.
-                System.Collections.Generic.List<string> warnings = null;
-
-                lock (_uiGate)
-                {
-                    if (_pendingWarnings.Count > 0)
-                    {
-                        warnings = new System.Collections.Generic.List<string>(_pendingWarnings);
-                        _pendingWarnings.Clear();
-                    }
-                }
-
-                if (warnings != null)
-                {
-                    var baseText = _messagesText.text;
-
-                    for (var i = 0; i < warnings.Count; i = i + 1)
-                    {
-                        var raw = warnings[i] ?? string.Empty;
-
-                        // Prevent double "[warn]" if caller already prefixed.
-                        var needsPrefix = !raw.StartsWith("[warn]");
-                        var line = needsPrefix ? "[warn] " + raw : raw;
-
-                        baseText = baseText + "\n" + line;
-                    }
-
-                    _messagesText.text = baseText;
+                    _messagesText.fontSize = _originalFontSize;
                 }
             }
         }
 
-        /// <inheritdoc/>
+        private void ApplyPendingDisplayName()
+        {
+            if (_displayNameInput == null)
+            {
+                return;
+            }
+
+            string name = null;
+            bool apply = false;
+
+            lock (_uiGate)
+            {
+                if (_hasPendingDisplayName)
+                {
+                    name = _pendingDisplayName ?? string.Empty;
+                    _pendingDisplayName = null;
+                    _hasPendingDisplayName = false;
+                    apply = true;
+                }
+            }
+
+            if (!apply)
+            {
+                return;
+            }
+
+            _displayNameInput.text = name;
+        }
+
+        private void ApplyPendingMessages()
+        {
+            if (_messagesText == null)
+            {
+                return;
+            }
+
+            string snapshot = null;
+            bool apply = false;
+
+            lock (_uiGate)
+            {
+                if (_hasPendingMessages)
+                {
+                    snapshot = _pendingMessages ?? string.Empty;
+                    _pendingMessages = null;
+                    _hasPendingMessages = false;
+                    apply = true;
+                }
+            }
+
+            if (!apply)
+            {
+                return;
+            }
+
+            var prevLen = _lastAppliedLength;
+            _messagesText.text = snapshot;
+            _lastAppliedLength = snapshot.Length;
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_messagesText.rectTransform);
+
+            // if your Content is a parent that should grow, also:
+            var contentRect = _messagesText.rectTransform.parent as RectTransform;
+            if (contentRect != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect); }
+
+            if (_autoScroller != null && _lastAppliedLength > prevLen)
+            {
+                _autoScroller.RequestScrollToBottom();
+            }
+        }
+
+        private void ApplyPendingClearInput()
+        {
+            if (_messageInput == null)
+            {
+                return;
+            }
+
+            if (!_pendingClearInput)
+            {
+                return;
+            }
+
+            _pendingClearInput = false;
+            _messageInput.text = string.Empty;
+        }
+
         public string GetDisplayName()
         {
             if (_displayNameInput == null)
@@ -191,7 +257,6 @@ namespace MinimalChat
             return _displayNameInput.text;
         }
 
-        /// <inheritdoc/>
         public string GetMessageInput()
         {
             if (_messageInput == null)
@@ -202,10 +267,8 @@ namespace MinimalChat
             return _messageInput.text;
         }
 
-        /// <inheritdoc/>
         public void SetDisplayName(string value)
         {
-            // Buffer any display name change to the main thread.
             lock (_uiGate)
             {
                 _pendingDisplayName = value ?? string.Empty;
@@ -213,29 +276,11 @@ namespace MinimalChat
             }
         }
 
-        /// <inheritdoc/>
         public void ClearMessageInput()
         {
             _pendingClearInput = true;
         }
 
-        private void ClearMessageInputOnMainThread()
-        {
-            if (_pendingClearInput)
-            {
-                _pendingClearInput = false;
-                _messageInput.text = string.Empty;
-            }
-            
-            if (_messageInput == null)
-            {
-                return;
-            }
-
-            _messageInput.text = string.Empty;
-        }
-
-        /// <inheritdoc/>
         public bool IsLoopbackEnabled()
         {
             if (_loopbackToggle == null)
@@ -246,21 +291,13 @@ namespace MinimalChat
             return _loopbackToggle.isOn;
         }
 
-        /// <inheritdoc/>
         public void SetMessages(string text)
         {
-            // Called from background stream; buffer for main-thread apply in Update().
             lock (_uiGate)
             {
                 _pendingMessages = text ?? string.Empty;
                 _hasPendingMessages = true;
             }
-        }
-
-        /// <inheritdoc/>
-        public void ShowWarning(string text)
-        {
-            Debug.LogWarning("Chat warning: " + (text ?? "<null>"), this);
         }
     }
 }
