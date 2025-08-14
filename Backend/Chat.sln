@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Server", "Chat.Server\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Tests", "Chat.Tests\Chat.Tests.csproj", "{DFD3F42B-65DD-48FA-8A4E-3D382A321B6C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Client", "Chat.Client\Chat.Client.csproj", "{3514869E-B86B-4A94-B753-77F45D4EDEAA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{DFD3F42B-65DD-48FA-8A4E-3D382A321B6C}.Release|x64.Build.0 = Release|Any CPU
 		{DFD3F42B-65DD-48FA-8A4E-3D382A321B6C}.Release|x86.ActiveCfg = Release|Any CPU
 		{DFD3F42B-65DD-48FA-8A4E-3D382A321B6C}.Release|x86.Build.0 = Release|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Debug|x64.Build.0 = Debug|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Debug|x86.Build.0 = Debug|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Release|x64.ActiveCfg = Release|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Release|x64.Build.0 = Release|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Release|x86.ActiveCfg = Release|Any CPU
+		{3514869E-B86B-4A94-B753-77F45D4EDEAA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
