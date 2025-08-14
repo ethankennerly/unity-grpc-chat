@@ -8,13 +8,12 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Xunit; // <-- required for IAsyncLifetime
+using Xunit;
 
 namespace Chat.Tests
 {
     /// <summary>
-    /// Spins up the server with a unique SQLite file per factory instance.
-    /// No env vars. Cleans up the DB file after tests.
+    /// Provides a unique SQLite DB per test run, no env vars needed.
     /// </summary>
     public sealed class TestChatFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
@@ -33,9 +32,8 @@ namespace Chat.Tests
 
             builder.ConfigureServices(services =>
             {
-                // Remove any existing string registration (conn string).
-                var toRemove = services.Where(d => d.ServiceType == typeof(string)).ToList();
-                foreach (var d in toRemove)
+                var old = services.Where(d => d.ServiceType == typeof(string)).ToList();
+                foreach (var d in old)
                 {
                     services.Remove(d);
                 }
@@ -52,7 +50,6 @@ namespace Chat.Tests
 
         public Task InitializeAsync() => Task.CompletedTask;
 
-        // 'new' to avoid hiding warning against WebApplicationFactory.DisposeAsync()
         public new Task DisposeAsync()
         {
             try
@@ -64,7 +61,7 @@ namespace Chat.Tests
             }
             catch
             {
-                // Ignore cleanup failures in tests.
+                // ignore cleanup errors
             }
 
             return Task.CompletedTask;

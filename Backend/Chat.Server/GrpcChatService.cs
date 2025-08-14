@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using Chat.Proto;
 using Grpc.Core;
@@ -9,8 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Chat.Server
 {
     /// <summary>
-    /// gRPC chat service: persists messages and streams new messages.
-    /// Handles client disconnects without error logs.
+    /// gRPC chat service with persistence and backlog replay.
     /// </summary>
     public sealed class GrpcChatService : ChatService.ChatServiceBase
     {
@@ -19,8 +15,8 @@ namespace Chat.Server
 
         public GrpcChatService(IChatRepo repo, ILogger<GrpcChatService> logger)
         {
-            _repo = repo ?? throw new ArgumentNullException(nameof(repo));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _repo = repo;
+            _logger = logger;
         }
 
         public override async Task<SendMessageAck> SendMessage(
@@ -30,7 +26,7 @@ namespace Chat.Server
             if (request == null)
             {
                 throw new RpcException(
-                    new Status(StatusCode.InvalidArgument, "request is required"));
+                    new Status(StatusCode.InvalidArgument, "request required"));
             }
 
             ValidateAscii(request.Sender);
@@ -42,16 +38,11 @@ namespace Chat.Server
                     new Status(StatusCode.InvalidArgument, "message too long"));
             }
 
-            var (id, createdAt) = await _repo.InsertAsync(
-                request.Sender,
-                request.Text,
-                context.CancellationToken);
+            var (id, createdAt) =
+                await _repo.InsertAsync(request.Sender, request.Text,
+                                        context.CancellationToken);
 
-            return new SendMessageAck
-            {
-                Id = id,
-                CreatedAt = createdAt
-            };
+            return new SendMessageAck { Id = id, CreatedAt = createdAt };
         }
 
         public override async Task StreamMessages(
@@ -62,7 +53,7 @@ namespace Chat.Server
             if (request == null)
             {
                 throw new RpcException(
-                    new Status(StatusCode.InvalidArgument, "request is required"));
+                    new Status(StatusCode.InvalidArgument, "request required"));
             }
 
             var sinceId = request.SinceId;
@@ -74,21 +65,18 @@ namespace Chat.Server
                 {
                     var rows = await _repo.ReadSinceAsync(sinceId, ct);
 
-                    var count = rows.Count;
-                    for (var i = 0; i < count; i++)
+                    for (int i = 0; i < rows.Count; i++)
                     {
                         var row = rows[i];
-
-                        var msg = new ChatMessage
+                        await responseStream.WriteAsync(new ChatMessage
                         {
-                            Id = row.Id,
-                            Sender = row.Sender,
-                            Text = row.Text,
-                            CreatedAt = row.CreatedAt
-                        };
+                            Id = row.Item1,
+                            Sender = row.Item2,
+                            Text = row.Item3,
+                            CreatedAt = row.Item4
+                        });
 
-                        await responseStream.WriteAsync(msg);
-                        sinceId = row.Id;
+                        sinceId = row.Item1;
                     }
 
                     await Task.Delay(100, ct);
@@ -111,10 +99,9 @@ namespace Chat.Server
                 return;
             }
 
-            for (var i = 0; i < s.Length; i++)
+            for (int i = 0; i < s.Length; i++)
             {
                 var c = s[i];
-
                 if (c == '\n' || c == '\t')
                 {
                     continue;
