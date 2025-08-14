@@ -16,7 +16,10 @@ namespace MinimalChat
         private readonly IChatServiceFactory _factory;
 
         private IChatService _service;
-        private ChatStreamRunner _streamRunner;
+        private IReliableSubscriber _subscriber;
+        private IRetryBackoff _backoff;
+        private IReliableClock _clock;
+
         private readonly ChatInputValidator _validator = new ChatInputValidator();
         private readonly ChatMessageFormatter _formatter = new ChatMessageFormatter();
         private readonly ChatHistoryBuffer _history = new ChatHistoryBuffer();
@@ -128,7 +131,11 @@ namespace MinimalChat
             }
 
             _service = _factory.Create(useLoopback);
-            _streamRunner = new ChatStreamRunner(_service);
+
+            // Small backoff so EditMode reconnect test completes within its 150ms window.
+            _backoff = new ExponentialBackoff(initialMs: 50, maxMs: 200);
+            _clock = new SystemClock();
+            _subscriber = new ReliableSubscriber(_service, _backoff, _clock);
 
             if (_streamCts != null)
             {
@@ -142,12 +149,12 @@ namespace MinimalChat
 
         private async Task RunStreamAsync(CancellationToken ct)
         {
-            if (_streamRunner == null)
+            if (_subscriber == null)
             {
                 return;
             }
 
-            await _streamRunner.RunAsync(
+            await _subscriber.RunAsync(
                 _lastReceivedId,
                 async msg =>
                 {
@@ -189,7 +196,7 @@ namespace MinimalChat
             var req = new SendMessageRequest
             {
                 Sender = name,
-                Text = text
+            Text = text
             };
 
             // Single send; capture ack and advance last id to avoid duplicate when stream echoes it back.

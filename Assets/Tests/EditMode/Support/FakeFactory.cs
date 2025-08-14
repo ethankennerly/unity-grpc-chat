@@ -2,16 +2,17 @@ namespace MinimalChat.Tests
 {
     /// <summary>
     /// Test-only factory fake to flip between loopback and "remote".
+    /// Accepts any IChatService (e.g., FakeService or FaultyService).
     /// </summary>
     internal sealed class FakeFactory : IChatServiceFactory
     {
-        private readonly FakeService _loop;
-        private readonly FakeService _remote;
+        private readonly IChatService _loop;
+        private readonly IChatService _remote;
 
         public int CreateLoopCount;
         public int CreateRemoteCount;
 
-        public FakeFactory(FakeService loop, FakeService remote)
+        public FakeFactory(IChatService loop, IChatService remote)
         {
             _loop = loop;
             _remote = remote;
