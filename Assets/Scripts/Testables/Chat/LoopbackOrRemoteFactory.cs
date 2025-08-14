@@ -1,23 +1,18 @@
 namespace MinimalChat
 {
     /// <summary>
-    /// Factory isolates how services are created so the presenter stays testable.
-    /// </summary>
-    public interface IChatServiceFactory
-    {
-        IChatService Create(bool useLoopback);
-    }
-
-    /// <summary>
-    /// Default factory: Loopback for debug, Remote for integration.
+    /// Returns a shared LoopbackChatService so multiple clients in the scene
+    /// receive the same broadcasts. Remote remains per-call for now.
     /// </summary>
     public sealed class LoopbackOrRemoteFactory : IChatServiceFactory
     {
+        private static readonly LoopbackChatService _sharedLoopback = new LoopbackChatService();
+
         public IChatService Create(bool useLoopback)
         {
             if (useLoopback)
             {
-                return new LoopbackChatService();
+                return _sharedLoopback;
             }
 
             return new RemoteGrpcChatService();
