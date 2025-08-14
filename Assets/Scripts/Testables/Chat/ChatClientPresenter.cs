@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Debug = UnityEngine.Debug;
@@ -9,7 +7,8 @@ using Random = System.Random;
 namespace MinimalChat
 {
     /// <summary>
-    /// Presenter owns all logic: service switching, validation, streaming, formatting, history.
+    /// Presenter orchestrates: service switching, validation, streaming, and view updates.
+    /// All heavy logic is delegated to POCO helpers; this class stays small and testable.
     /// </summary>
     public sealed class ChatClientPresenter
     {
@@ -17,14 +16,29 @@ namespace MinimalChat
         private readonly IChatServiceFactory _factory;
 
         private IChatService _service;
+        private ChatStreamRunner _streamRunner;
+        private readonly ChatInputValidator _validator = new ChatInputValidator();
+        private readonly ChatMessageFormatter _formatter = new ChatMessageFormatter();
+        private readonly ChatHistoryBuffer _history = new ChatHistoryBuffer();
+
         private CancellationTokenSource _streamCts;
         private Task _streamTask;
         private long _lastReceivedId;
 
-        private readonly LinkedList<string> _lines = new LinkedList<string>();
-        private readonly object _gate = new object();
+        public int MaxMessagesToShow
+        {
+            get { return _history == null ? 200 : _historyCapacity; }
+            set
+            {
+                _historyCapacity = value;
+                if (_history != null)
+                {
+                    _history.Capacity = value;
+                }
+            }
+        }
 
-        public int MaxMessagesToShow { get; set; } = 200;
+        private int _historyCapacity = 200;
 
         public ChatClientPresenter(IChatView view, IChatServiceFactory factory)
         {
@@ -43,11 +57,10 @@ namespace MinimalChat
 
             _view.SendClicked += OnSendClicked;
             _view.LoopbackChanged += OnLoopbackChanged;
+
+            _history.Capacity = _historyCapacity;
         }
 
-        /// <summary>
-        /// Starts presentation. Ensures a display name and opens the initial stream.
-        /// </summary>
         public void Start()
         {
             var name = _view.GetDisplayName();
@@ -64,9 +77,6 @@ namespace MinimalChat
             SwitchService(force: true);
         }
 
-        /// <summary>
-        /// Stops streaming. Presenter remains reusable after Stop().
-        /// </summary>
         public async Task StopAsync()
         {
             if (_streamCts == null)
@@ -94,13 +104,13 @@ namespace MinimalChat
 
         private async void OnLoopbackChanged()
         {
-            await StopAsync();
+            await StopAsync().ConfigureAwait(false);
             SwitchService(force: true);
         }
 
         private async void OnSendClicked()
         {
-            await SendFromViewAsync();
+            await SendFromViewAsync().ConfigureAwait(false);
         }
 
         private void SwitchService(bool force)
@@ -118,6 +128,13 @@ namespace MinimalChat
             }
 
             _service = _factory.Create(useLoopback);
+            _streamRunner = new ChatStreamRunner(_service);
+
+            if (_streamCts != null)
+            {
+                _streamCts.Cancel();
+                _streamCts.Dispose();
+            }
 
             _streamCts = new CancellationTokenSource();
             _streamTask = RunStreamAsync(_streamCts.Token);
@@ -125,38 +142,28 @@ namespace MinimalChat
 
         private async Task RunStreamAsync(CancellationToken ct)
         {
-            if (_service == null)
+            if (_streamRunner == null)
             {
                 return;
             }
 
-            try
-            {
-                var stream = _service.SubscribeMessagesAsync(_lastReceivedId, ct);
-
-                await foreach (var msg in stream.ConfigureAwait(false))
+            await _streamRunner.RunAsync(
+                _lastReceivedId,
+                async msg =>
                 {
                     if (msg.Id <= _lastReceivedId)
                     {
-                        continue;
+                        return;
                     }
 
                     _lastReceivedId = msg.Id;
 
-                    var time = TryFormatTime(msg.CreatedAt);
-                    var line = "[" + time + "] " + msg.Sender + ": " + msg.Text;
-
+                    var line = _formatter.FormatIncoming(msg.Sender, msg.Text, msg.CreatedAt);
                     AppendAndRender(line);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                var err = "[error] " + ex.GetType().Name + ": " + ex.Message;
-                AppendAndRender(err);
-            }
+
+                    await Task.CompletedTask;
+                },
+                ct).ConfigureAwait(false);
         }
 
         private async Task SendFromViewAsync()
@@ -173,27 +180,9 @@ namespace MinimalChat
             var name = nameRaw == null ? "" : nameRaw.Trim();
             var text = textRaw == null ? "" : textRaw.Trim();
 
-            if (name.Length == 0)
+            if (!_validator.CanSend(name, text))
             {
-                Debug.LogWarning("Enter a display name.");
-                return;
-            }
-
-            if (text.Length == 0)
-            {
-                Debug.LogWarning("Enter a message.");
-                return;
-            }
-
-            if (text.Length > 1024)
-            {
-                Debug.LogWarning("Message exceeds 1024 characters.");
-                return;
-            }
-
-            if (!IsAscii(name) || !IsAscii(text))
-            {
-                Debug.LogWarning("Only ASCII characters are allowed.");
+                Debug.LogWarning("Enter a valid ASCII message <= 1024 chars.");
                 return;
             }
 
@@ -205,88 +194,17 @@ namespace MinimalChat
 
             await _service.SendMessageAsync(req, CancellationToken.None).ConfigureAwait(false);
 
+            var line = _formatter.FormatOutgoing(name, text, DateTime.Now);
+            AppendAndRender(line);
+
             _view.ClearMessageInput();
         }
 
         private void AppendAndRender(string line)
         {
-            string snapshot;
-
-            lock (_gate)
-            {
-                _lines.AddLast(line);
-
-                while (_lines.Count > MaxMessagesToShow)
-                {
-                    _lines.RemoveFirst();
-                }
-
-                var cap = MaxMessagesToShow * 64;
-
-                if (cap > 4096)
-                {
-                    cap = 4096;
-                }
-
-                var sb = new StringBuilder(cap);
-                var node = _lines.First;
-
-                while (node != null)
-                {
-                    var value = node.Value;
-                    sb.AppendLine(value);
-                    node = node.Next;
-                }
-
-                snapshot = sb.ToString();
-            }
-
+            _history.Append(line);
+            var snapshot = _history.BuildSnapshot();
             _view.SetMessages(snapshot);
-        }
-
-        private static string TryFormatTime(string isoUtc)
-        {
-            if (DateTimeOffset.TryParse(isoUtc, out var dto))
-            {
-                return dto.ToLocalTime().ToString("HH:mm");
-            }
-
-            if (isoUtc == null)
-            {
-                return "";
-            }
-
-            return isoUtc;
-        }
-
-        private static bool IsAscii(string s)
-        {
-            if (s == null)
-            {
-                return false;
-            }
-
-            var i = 0;
-
-            while (i < s.Length)
-            {
-                var c = s[i];
-
-                if (c == '\n' || c == '\t')
-                {
-                    i = i + 1;
-                    continue;
-                }
-
-                if (c < 0x20 || c > 0x7E)
-                {
-                    return false;
-                }
-
-                i = i + 1;
-            }
-
-            return true;
         }
     }
 }
