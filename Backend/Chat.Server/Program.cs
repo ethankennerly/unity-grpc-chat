@@ -23,7 +23,11 @@ builder.Services.AddHostedService<SchemaBootstrapper>();
 
 var app = builder.Build();
 
-app.MapGrpcService<GrpcChatService>();
+app.UseGrpcWeb();
+
+app.MapGrpcService<GrpcChatService>()
+   .EnableGrpcWeb();
+
 app.MapGet("/", () => "gRPC chat server (Unity Minimal Chat).");
 
 app.Run();
