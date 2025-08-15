@@ -43,6 +43,14 @@ namespace MinimalChat
 
         private int _historyCapacity = 200;
 
+        /// <summary>
+        /// Convenience: presenter with default ChatServiceFactory (URL lives in the factory).
+        /// </summary>
+        public ChatClientPresenter(IChatView view)
+            : this(view, new ChatServiceFactory())
+        {
+        }
+
         public ChatClientPresenter(IChatView view, IChatServiceFactory factory)
         {
             if (view == null)

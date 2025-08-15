@@ -1,0 +1,9 @@
+{
+  "name": "Chat.Proto.Runtime",
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

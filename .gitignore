@@ -128,3 +128,6 @@ TestResult*/
 *.suo
 .vscode/
 .idea/
+
+# SQLite dev/test data
+Backend/data/*.db

@@ -47,3 +47,5 @@ dotnet build Chat.sln -c Debug
 
 echo "[step] dotnet test Chat.sln -c Debug"
 dotnet test Chat.sln -c Debug
+
+scripts/sync-all.sh

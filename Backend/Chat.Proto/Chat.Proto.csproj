@@ -6,8 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Adjust path if your proto is elsewhere -->
-    <Protobuf Include="chat.proto" GrpcServices="Client,Server" />
+    <Protobuf Include="chat.proto"
+              GrpcServices="Client,Server"
+              CompileOutputs="true" />
   </ItemGroup>
 
   <ItemGroup>
