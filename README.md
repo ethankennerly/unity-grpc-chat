@@ -7,6 +7,7 @@ Unity 6 [Version](ProjectSettings/ProjectVersion.txt)
 **Dependencies**
 
 - **gRPC for Unity** — via Unity Package Manager (UPM) if available, or install `Grpc.Net.Client` and `Grpc.Tools` via NuGet for backend/.NET components.
+    - **NuGetForUnity** [4.5.0](https://github.com/GlitchEnzo/NuGetForUnity/releases/tag/v4.5.0) installed gRPC for Unity.
 - **Google.Protobuf** — included with gRPC packages, or install separately via NuGet.
 - **SQLite** — use `Microsoft.Data.Sqlite` NuGet package for backend server.
 - **NUnit** — Unity Test Framework package for client tests; NUnit NuGet for backend tests.

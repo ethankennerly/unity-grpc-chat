@@ -101,6 +101,9 @@ InitTestScene*.unity*
 # MacOS cruft
 .DS_Store
 
+# NuGetForUnity auto-restored packages
+/[Aa]ssets/Packages/
+
 # Backend .NET projects - keep sources, ignore build outputs
 
 # Allow backend project/solution files (needed for dotnet restore/build)
