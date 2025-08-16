@@ -1,46 +1,37 @@
-# Backend (gRPC + Protobuf + SQLite)
+# Backend (gRPC + SQLite)
 
-Minimal backend service for [unity-grpc-chat](../README.md).
-Implements message persistence (SQLite) and real-time streaming (gRPC server).
+Minimal backend for [unity-grpc-chat](../README.md).
+Provides message persistence (SQLite) and real-time streaming (gRPC).
 
 ---
 
 ## Quick Start
 
-### 1. Install Dependencies
-Run the [installation script](scripts/install-backend.sh) to install NuGet dependencies.
+**Install dependencies**
 
-```
-./scripts/install-backend.sh
-```
+    ./scripts/install-backend.sh
 
-### 2. Build & Run
-Run the [build script](scripts/build-backend.sh) to compile the backend.
+**Build**
 
-```
-./scripts/build-backend.sh
-```
+    ./scripts/build-backend.sh
 
-Run the [start script](scripts/start-backend.sh) to launch the backend server locally.
+**Run server**
 
-```
-./scripts/start-backend.sh
-```
+    ./scripts/start-backend.sh
 
 ---
 
-## Structure
+## Project Layout
 
-- [`src/`](src) — Backend C# source code (gRPC services, SQLite persistence)
-- [`protos/`](protos) — Protobuf definitions for chat service
+- [`Chat.Server/`](Chat.Server) — gRPC services & SQLite persistence
+- [`Chat.Proto/`](Chat.Proto) — Protobuf definitions
+- [`Chat.Tests/`](Chat.Tests) — NUnit test suite
 - [`scripts/`](scripts) — Install/build/run scripts
-- [`tests/`](tests) — NUnit backend test suite
 
 ---
 
-## Notes
+## Details
 
-- Uses **.NET 8** minimal gRPC server.
-- SQLite in **WAL mode** for write concurrency.
-- Retains **last 1024 messages** only.
-- All details and configurations are in the respective folder's README or script comments.
+- Runs on **.NET 8**
+- SQLite in **WAL mode** for concurrency
+- Keeps the last **1024 messages**
