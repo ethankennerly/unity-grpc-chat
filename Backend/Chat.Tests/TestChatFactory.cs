@@ -28,7 +28,7 @@ namespace Chat.Tests
                                   LogLevel.Information);
             });
 
-            var dir = Path.Combine(Path.GetTempPath(), "unity-minimal-chat-tests");
+            var dir = Path.Combine(Path.GetTempPath(), "unity-grpc-chat-tests");
             Directory.CreateDirectory(dir);
 
             _dbPath = Path.Combine(dir, $"chat_{Guid.NewGuid():N}.sqlite");

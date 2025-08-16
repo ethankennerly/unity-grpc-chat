@@ -1,6 +1,6 @@
 # Backend (gRPC + Protobuf + SQLite)
 
-Minimal backend service for **unity-minimal-chat**.  
+Minimal backend service for [unity-grpc-chat](../README.md).
 Implements message persistence (SQLite) and real-time streaming (gRPC server).
 
 ---
