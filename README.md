@@ -1,5 +1,6 @@
-# Unity Minimal Chat
-Two clients chat in realtime using Unity 6.
+# Unity gRPC Chat
+Two clients chat.
+gRPC refreshed chat in less than a second.
 
 ## Installation
 Unity 6 [Version](ProjectSettings/ProjectVersion.txt)
