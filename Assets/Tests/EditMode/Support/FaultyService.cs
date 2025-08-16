@@ -2,104 +2,202 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Runtime.CompilerServices;
+using MinimalChat;
 
 namespace MinimalChat.Tests
 {
     /// <summary>
-    /// IChatService fake that:
-    /// - Emits backlog > sinceId
-    /// - Emits some live messages
-    /// - Then throws once to simulate a drop
-    /// - On next Subscribe, continues emitting live messages
+    /// Like FakeService, but drops the stream once after the first emitted item.
+    /// Useful to test presenter reconnection + dedupe.
     /// </summary>
-    internal sealed class FaultyService : IChatService
+    public sealed class FaultyService : IChatService
     {
-        private long _nextId;
-        private readonly List<ChatMessage> _sent = new List<ChatMessage>(64);
-        private readonly Queue<ChatMessage> _live = new Queue<ChatMessage>(64);
-        private bool _shouldFailOnce;
+        private readonly object _gate = new object();
+        private readonly List<ChatMessage> _messages = new List<ChatMessage>(256);
+        private readonly List<AsyncQueue<ChatMessage>> _subs =
+            new List<AsyncQueue<ChatMessage>>(8);
+
+        private long _nextId = 1;
+        private bool _shouldDropOnce;
+
+        public FaultyService()
+            : this(failOnce: true)
+        {
+        }
 
         public FaultyService(bool failOnce)
         {
-            _shouldFailOnce = failOnce;
+            _shouldDropOnce = failOnce;
         }
 
-        public Task<SendMessageAck> SendMessageAsync(SendMessageRequest req, CancellationToken ct)
+        public Task<SendMessageAck> SendMessageAsync(
+            SendMessageRequest req,
+            CancellationToken ct
+        )
         {
-            _nextId = _nextId + 1;
-            var created = DateTimeOffset.UtcNow.ToString("o");
-
-            var m = new ChatMessage
+            if (req == null)
             {
-                Id = _nextId,
-                Sender = req.Sender,
-                Text = req.Text,
-                CreatedAt = created
+                throw new ArgumentNullException(nameof(req));
+            }
+
+            ValidateAscii(req.Sender);
+            ValidateAscii(req.Text);
+
+            if (req.Text.Length > 1024)
+            {
+                throw new ArgumentException("Text exceeds 1024 characters.", nameof(req));
+            }
+
+            ChatMessage msg;
+
+            lock (_gate)
+            {
+                var id = _nextId;
+                _nextId = _nextId + 1;
+
+                var nowMs = NowMs();
+
+                msg = new ChatMessage
+                {
+                    Id = id,
+                    Sender = req.Sender,
+                    Text = req.Text,
+                    CreatedAt = nowMs
+                };
+
+                _messages.Add(msg);
+
+                var i = 0;
+
+                while (i < _subs.Count)
+                {
+                    _subs[i].Enqueue(msg);
+                    i = i + 1;
+                }
+            }
+
+            var ack = new SendMessageAck
+            {
+                Id = msg.Id,
+                CreatedAt = msg.CreatedAt
             };
 
-            _sent.Add(m);
-            _live.Enqueue(m);
-
-            var ack = new SendMessageAck { Id = m.Id, CreatedAt = created };
             return Task.FromResult(ack);
         }
 
         public async IAsyncEnumerable<ChatMessage> SubscribeMessagesAsync(
             long sinceId,
-            [EnumeratorCancellation] CancellationToken ct)
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct
+        )
         {
-            // Backlog
-            for (var i = 0; i < _sent.Count; i++)
+            var q = new AsyncQueue<ChatMessage>();
+            List<ChatMessage> backlog = new List<ChatMessage>(64);
+
+            lock (_gate)
             {
-                var m = _sent[i];
-                if (m.Id > sinceId)
+                var i = 0;
+
+                while (i < _messages.Count)
                 {
-                    yield return m;
+                    var m = _messages[i];
+
+                    if (m.Id > sinceId)
+                    {
+                        backlog.Add(m);
+                    }
+
+                    i = i + 1;
                 }
+
+                _subs.Add(q);
             }
 
-            // Live: emit up to 2, then fail once if configured
-            int emitted = 0;
+            var emitted = 0;
 
-            while (!ct.IsCancellationRequested)
+            try
             {
-                if (_live.Count > 0)
+                var j = 0;
+
+                while (j < backlog.Count)
                 {
-                    var m = _live.Dequeue();
+                    ct.ThrowIfCancellationRequested();
+
+                    var m = backlog[j];
+                    q.Enqueue(m);
+                    emitted = emitted + 1;
+
+                    if (_shouldDropOnce && emitted >= 1)
+                    {
+                        _shouldDropOnce = false;
+                        throw new Exception("Simulated stream failure.");
+                    }
+
+                    j = j + 1;
+                }
+
+                await foreach (var m in q.ReadAllAsync(ct).ConfigureAwait(false))
+                {
                     yield return m;
                     emitted = emitted + 1;
 
-                    if (_shouldFailOnce && emitted >= 2)
+                    if (_shouldDropOnce && emitted >= 1)
                     {
-                        _shouldFailOnce = false;
-                        throw new Exception("Simulated drop");
+                        _shouldDropOnce = false;
+                        throw new Exception("Simulated stream failure.");
                     }
                 }
-                else
+            }
+            finally
+            {
+                lock (_gate)
                 {
-                    await Task.Delay(1, ct);
+                    var k = 0;
+
+                    while (k < _subs.Count)
+                    {
+                        if (ReferenceEquals(_subs[k], q))
+                        {
+                            _subs.RemoveAt(k);
+                            break;
+                        }
+
+                        k = k + 1;
+                    }
                 }
             }
         }
 
-        public long EnqueueForTest(string sender, string text)
+        private static long NowMs()
         {
-            _nextId = _nextId + 1;
-            var created = DateTimeOffset.UtcNow.ToString("o");
+            return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        }
 
-            var m = new ChatMessage
+        private static void ValidateAscii(string value)
+        {
+            if (value == null)
             {
-                Id = _nextId,
-                Sender = sender,
-                Text = text,
-                CreatedAt = created
-            };
+                throw new ArgumentException("Value cannot be null.");
+            }
 
-            _sent.Add(m);
-            _live.Enqueue(m);
+            var i = 0;
 
-            return m.Id;
+            while (i < value.Length)
+            {
+                var c = value[i];
+
+                if (c == '\n' || c == '\t')
+                {
+                    i = i + 1;
+                    continue;
+                }
+
+                if (c < 0x20 || c > 0x7E)
+                {
+                    throw new ArgumentException("Only ASCII characters are allowed.");
+                }
+
+                i = i + 1;
+            }
         }
     }
 }

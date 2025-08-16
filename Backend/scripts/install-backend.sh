@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
+
+# Enable shell trace when DEBUG=1
+[[ "${DEBUG:-0}" == "1" ]] && set -x
 
 echo "=== Backend Install + Build ==="
 
@@ -45,7 +48,11 @@ dotnet restore Chat.sln
 echo "[step] dotnet build Chat.sln -c Debug"
 dotnet build Chat.sln -c Debug
 
-echo "[step] dotnet test Chat.sln -c Debug"
-dotnet test Chat.sln -c Debug
+echo "=== Test (Debug, verbose) ==="
+# Make test logs clearer:
+export DOTNET_CLI_UI_LANGUAGE=en
+export NUGET_SHOW_STACK=true
+# Show server stdout/stderr in test logs:
+dotnet test Chat.sln -c Debug -v n --logger "console;verbosity=detailed"
 
 scripts/sync-all.sh

@@ -25,20 +25,20 @@ namespace Chat.Proto {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "CgpjaGF0LnByb3RvEgRjaGF0IjIKElNlbmRNZXNzYWdlUmVxdWVzdBIOCgZz",
-            "ZW5kZXIYASABKAkSDAoEdGV4dBgCIAEoCSIvCg5TZW5kTWVzc2FnZUFjaxIK",
-            "CgJpZBgBIAEoAxIRCgljcmVhdGVkQXQYAiABKAkiSgoLQ2hhdE1lc3NhZ2US",
-            "CgoCaWQYASABKAMSDgoGc2VuZGVyGAIgASgJEgwKBHRleHQYAyABKAkSEQoJ",
-            "Y3JlYXRlZEF0GAQgASgJIiAKDVN0cmVhbVJlcXVlc3QSDwoHc2luY2VJZBgB",
-            "IAEoAzKIAQoLQ2hhdFNlcnZpY2USPQoLU2VuZE1lc3NhZ2USGC5jaGF0LlNl",
-            "bmRNZXNzYWdlUmVxdWVzdBoULmNoYXQuU2VuZE1lc3NhZ2VBY2sSOgoOU3Ry",
-            "ZWFtTWVzc2FnZXMSEy5jaGF0LlN0cmVhbVJlcXVlc3QaES5jaGF0LkNoYXRN",
-            "ZXNzYWdlMAFCDaoCCkNoYXQuUHJvdG9iBnByb3RvMw=="));
+            "ZW5kZXIYASABKAkSDAoEdGV4dBgCIAEoCSIwCg5TZW5kTWVzc2FnZUFjaxIK",
+            "CgJpZBgBIAEoAxISCgpjcmVhdGVkX2F0GAIgASgDIksKC0NoYXRNZXNzYWdl",
+            "EgoKAmlkGAEgASgDEhIKCmNyZWF0ZWRfYXQYAiABKAMSDgoGc2VuZGVyGAMg",
+            "ASgJEgwKBHRleHQYBCABKAkiIAoNU3RyZWFtUmVxdWVzdBIPCgdzaW5jZUlk",
+            "GAEgASgDMogBCgtDaGF0U2VydmljZRI9CgtTZW5kTWVzc2FnZRIYLmNoYXQu",
+            "U2VuZE1lc3NhZ2VSZXF1ZXN0GhQuY2hhdC5TZW5kTWVzc2FnZUFjaxI6Cg5T",
+            "dHJlYW1NZXNzYWdlcxITLmNoYXQuU3RyZWFtUmVxdWVzdBoRLmNoYXQuQ2hh",
+            "dE1lc3NhZ2UwAUINqgIKQ2hhdC5Qcm90b2IGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Chat.Proto.SendMessageRequest), global::Chat.Proto.SendMessageRequest.Parser, new[]{ "Sender", "Text" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Chat.Proto.SendMessageAck), global::Chat.Proto.SendMessageAck.Parser, new[]{ "Id", "CreatedAt" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Chat.Proto.ChatMessage), global::Chat.Proto.ChatMessage.Parser, new[]{ "Id", "Sender", "Text", "CreatedAt" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Chat.Proto.ChatMessage), global::Chat.Proto.ChatMessage.Parser, new[]{ "Id", "CreatedAt", "Sender", "Text" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Chat.Proto.StreamRequest), global::Chat.Proto.StreamRequest.Parser, new[]{ "SinceId" }, null, null, null, null)
           }));
     }
@@ -329,18 +329,18 @@ namespace Chat.Proto {
       }
     }
 
-    /// <summary>Field number for the "createdAt" field.</summary>
+    /// <summary>Field number for the "created_at" field.</summary>
     public const int CreatedAtFieldNumber = 2;
-    private string createdAt_ = "";
+    private long createdAt_;
     /// <summary>
-    /// ISO-8601 UTC
+    /// epoch ms
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public string CreatedAt {
+    public long CreatedAt {
       get { return createdAt_; }
       set {
-        createdAt_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+        createdAt_ = value;
       }
     }
 
@@ -369,7 +369,7 @@ namespace Chat.Proto {
     public override int GetHashCode() {
       int hash = 1;
       if (Id != 0L) hash ^= Id.GetHashCode();
-      if (CreatedAt.Length != 0) hash ^= CreatedAt.GetHashCode();
+      if (CreatedAt != 0L) hash ^= CreatedAt.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -392,9 +392,9 @@ namespace Chat.Proto {
         output.WriteRawTag(8);
         output.WriteInt64(Id);
       }
-      if (CreatedAt.Length != 0) {
-        output.WriteRawTag(18);
-        output.WriteString(CreatedAt);
+      if (CreatedAt != 0L) {
+        output.WriteRawTag(16);
+        output.WriteInt64(CreatedAt);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -410,9 +410,9 @@ namespace Chat.Proto {
         output.WriteRawTag(8);
         output.WriteInt64(Id);
       }
-      if (CreatedAt.Length != 0) {
-        output.WriteRawTag(18);
-        output.WriteString(CreatedAt);
+      if (CreatedAt != 0L) {
+        output.WriteRawTag(16);
+        output.WriteInt64(CreatedAt);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
@@ -427,8 +427,8 @@ namespace Chat.Proto {
       if (Id != 0L) {
         size += 1 + pb::CodedOutputStream.ComputeInt64Size(Id);
       }
-      if (CreatedAt.Length != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeStringSize(CreatedAt);
+      if (CreatedAt != 0L) {
+        size += 1 + pb::CodedOutputStream.ComputeInt64Size(CreatedAt);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -445,7 +445,7 @@ namespace Chat.Proto {
       if (other.Id != 0L) {
         Id = other.Id;
       }
-      if (other.CreatedAt.Length != 0) {
+      if (other.CreatedAt != 0L) {
         CreatedAt = other.CreatedAt;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -467,8 +467,8 @@ namespace Chat.Proto {
             Id = input.ReadInt64();
             break;
           }
-          case 18: {
-            CreatedAt = input.ReadString();
+          case 16: {
+            CreatedAt = input.ReadInt64();
             break;
           }
         }
@@ -490,8 +490,8 @@ namespace Chat.Proto {
             Id = input.ReadInt64();
             break;
           }
-          case 18: {
-            CreatedAt = input.ReadString();
+          case 16: {
+            CreatedAt = input.ReadInt64();
             break;
           }
         }
@@ -536,9 +536,9 @@ namespace Chat.Proto {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ChatMessage(ChatMessage other) : this() {
       id_ = other.id_;
+      createdAt_ = other.createdAt_;
       sender_ = other.sender_;
       text_ = other.text_;
-      createdAt_ = other.createdAt_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -560,8 +560,23 @@ namespace Chat.Proto {
       }
     }
 
+    /// <summary>Field number for the "created_at" field.</summary>
+    public const int CreatedAtFieldNumber = 2;
+    private long createdAt_;
+    /// <summary>
+    /// epoch ms
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public long CreatedAt {
+      get { return createdAt_; }
+      set {
+        createdAt_ = value;
+      }
+    }
+
     /// <summary>Field number for the "sender" field.</summary>
-    public const int SenderFieldNumber = 2;
+    public const int SenderFieldNumber = 3;
     private string sender_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -573,7 +588,7 @@ namespace Chat.Proto {
     }
 
     /// <summary>Field number for the "text" field.</summary>
-    public const int TextFieldNumber = 3;
+    public const int TextFieldNumber = 4;
     private string text_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -581,18 +596,6 @@ namespace Chat.Proto {
       get { return text_; }
       set {
         text_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
-      }
-    }
-
-    /// <summary>Field number for the "createdAt" field.</summary>
-    public const int CreatedAtFieldNumber = 4;
-    private string createdAt_ = "";
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public string CreatedAt {
-      get { return createdAt_; }
-      set {
-        createdAt_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
@@ -612,9 +615,9 @@ namespace Chat.Proto {
         return true;
       }
       if (Id != other.Id) return false;
+      if (CreatedAt != other.CreatedAt) return false;
       if (Sender != other.Sender) return false;
       if (Text != other.Text) return false;
-      if (CreatedAt != other.CreatedAt) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -623,9 +626,9 @@ namespace Chat.Proto {
     public override int GetHashCode() {
       int hash = 1;
       if (Id != 0L) hash ^= Id.GetHashCode();
+      if (CreatedAt != 0L) hash ^= CreatedAt.GetHashCode();
       if (Sender.Length != 0) hash ^= Sender.GetHashCode();
       if (Text.Length != 0) hash ^= Text.GetHashCode();
-      if (CreatedAt.Length != 0) hash ^= CreatedAt.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -648,17 +651,17 @@ namespace Chat.Proto {
         output.WriteRawTag(8);
         output.WriteInt64(Id);
       }
+      if (CreatedAt != 0L) {
+        output.WriteRawTag(16);
+        output.WriteInt64(CreatedAt);
+      }
       if (Sender.Length != 0) {
-        output.WriteRawTag(18);
+        output.WriteRawTag(26);
         output.WriteString(Sender);
       }
       if (Text.Length != 0) {
-        output.WriteRawTag(26);
-        output.WriteString(Text);
-      }
-      if (CreatedAt.Length != 0) {
         output.WriteRawTag(34);
-        output.WriteString(CreatedAt);
+        output.WriteString(Text);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -674,17 +677,17 @@ namespace Chat.Proto {
         output.WriteRawTag(8);
         output.WriteInt64(Id);
       }
+      if (CreatedAt != 0L) {
+        output.WriteRawTag(16);
+        output.WriteInt64(CreatedAt);
+      }
       if (Sender.Length != 0) {
-        output.WriteRawTag(18);
+        output.WriteRawTag(26);
         output.WriteString(Sender);
       }
       if (Text.Length != 0) {
-        output.WriteRawTag(26);
-        output.WriteString(Text);
-      }
-      if (CreatedAt.Length != 0) {
         output.WriteRawTag(34);
-        output.WriteString(CreatedAt);
+        output.WriteString(Text);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
@@ -699,14 +702,14 @@ namespace Chat.Proto {
       if (Id != 0L) {
         size += 1 + pb::CodedOutputStream.ComputeInt64Size(Id);
       }
+      if (CreatedAt != 0L) {
+        size += 1 + pb::CodedOutputStream.ComputeInt64Size(CreatedAt);
+      }
       if (Sender.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Sender);
       }
       if (Text.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Text);
-      }
-      if (CreatedAt.Length != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeStringSize(CreatedAt);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -723,14 +726,14 @@ namespace Chat.Proto {
       if (other.Id != 0L) {
         Id = other.Id;
       }
+      if (other.CreatedAt != 0L) {
+        CreatedAt = other.CreatedAt;
+      }
       if (other.Sender.Length != 0) {
         Sender = other.Sender;
       }
       if (other.Text.Length != 0) {
         Text = other.Text;
-      }
-      if (other.CreatedAt.Length != 0) {
-        CreatedAt = other.CreatedAt;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -751,16 +754,16 @@ namespace Chat.Proto {
             Id = input.ReadInt64();
             break;
           }
-          case 18: {
-            Sender = input.ReadString();
+          case 16: {
+            CreatedAt = input.ReadInt64();
             break;
           }
           case 26: {
-            Text = input.ReadString();
+            Sender = input.ReadString();
             break;
           }
           case 34: {
-            CreatedAt = input.ReadString();
+            Text = input.ReadString();
             break;
           }
         }
@@ -782,16 +785,16 @@ namespace Chat.Proto {
             Id = input.ReadInt64();
             break;
           }
-          case 18: {
-            Sender = input.ReadString();
+          case 16: {
+            CreatedAt = input.ReadInt64();
             break;
           }
           case 26: {
-            Text = input.ReadString();
+            Sender = input.ReadString();
             break;
           }
           case 34: {
-            CreatedAt = input.ReadString();
+            Text = input.ReadString();
             break;
           }
         }

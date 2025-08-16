@@ -173,7 +173,9 @@ namespace MinimalChat
 
                     _lastReceivedId = msg.Id;
 
-                    var line = _formatter.FormatIncoming(msg.Sender, msg.Text, msg.CreatedAt);
+                    // Incoming expects an ISO-8601 UTC string.
+                    var whenIso = ToIso8601Utc(msg.CreatedAt);
+                    var line = _formatter.FormatIncoming(msg.Sender, msg.Text, whenIso);
                     AppendAndRender(line);
 
                     await Task.CompletedTask;
@@ -204,18 +206,21 @@ namespace MinimalChat
             var req = new SendMessageRequest
             {
                 Sender = name,
-            Text = text
+                Text = text
             };
 
             // Single send; capture ack and advance last id to avoid duplicate when stream echoes it back.
-            var ack = await _service.SendMessageAsync(req, CancellationToken.None).ConfigureAwait(false);
+            var ack = await _service.SendMessageAsync(req, CancellationToken.None)
+                .ConfigureAwait(false);
+
             if (ack != null && ack.Id > _lastReceivedId)
             {
                 _lastReceivedId = ack.Id;
             }
 
-            // Local echo for snappy UX.
-            var line = _formatter.FormatOutgoing(name, text, DateTime.Now);
+            // Outgoing expects a local DateTime.
+            var whenLocal = DateTime.Now;
+            var line = _formatter.FormatOutgoing(name, text, whenLocal);
             AppendAndRender(line);
 
             _view.ClearMessageInput();
@@ -226,6 +231,16 @@ namespace MinimalChat
             _history.Append(line);
             var snapshot = _history.BuildSnapshot();
             _view.SetMessages(snapshot);
+        }
+
+        // --- Helpers ----------------------------------------------------------
+
+        // Convert epoch-ms to ISO-8601 UTC string for incoming messages.
+        private static string ToIso8601Utc(long epochMs)
+        {
+            var dto = DateTimeOffset.FromUnixTimeMilliseconds(epochMs);
+            // Use round-trip "o" format, always UTC (Z).
+            return dto.UtcDateTime.ToString("o");
         }
     }
 }

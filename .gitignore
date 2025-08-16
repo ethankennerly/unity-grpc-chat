@@ -130,4 +130,4 @@ TestResult*/
 .idea/
 
 # SQLite dev/test data
-Backend/data/*.db
+Backend/*/data/*.db

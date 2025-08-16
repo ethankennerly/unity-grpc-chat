@@ -42,14 +42,15 @@ namespace MinimalChat
                 var id = _nextId;
                 _nextId = _nextId + 1;
 
-                var timestamp = DateTimeOffset.UtcNow.ToString("o");
+                // Epoch milliseconds for consistency with backend/proto.
+                var timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
                 msg = new ChatMessage
                 {
                     Id = id,
                     Sender = req.Sender,
                     Text = req.Text,
-                    CreatedAt = timestamp
+                    CreatedAt = timestampMs
                 };
 
                 _messages.Add(msg);

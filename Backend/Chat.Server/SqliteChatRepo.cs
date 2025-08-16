@@ -7,81 +7,108 @@ using Microsoft.Data.Sqlite;
 namespace Chat.Server
 {
     /// <summary>
-    /// SQLite-backed message store. Keeps only the most recent 1024 rows.
-    /// ReadSinceAsync returns rows ordered by id, limited to 256.
+    /// SQLite implementation with a simple OnInserted event for live tailing.
     /// </summary>
     public sealed class SqliteChatRepo : IChatRepo
     {
-        private readonly string _connStr;
+        private readonly string _connectionString;
 
-        public SqliteChatRepo(string connStr)
+        public SqliteChatRepo(string connectionString)
         {
-            _connStr = connStr;
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                throw new ArgumentException("connectionString required",
+                                            nameof(connectionString));
+            }
+
+            _connectionString = connectionString;
         }
 
-        public async Task<(long Id, string CreatedAt)> InsertAsync(
+        public event Action<RepoMessage>? OnInserted;
+
+        public async Task<(long id, long createdAt)> InsertAsync(
             string sender,
             string text,
             CancellationToken ct)
         {
-            await using var conn = new SqliteConnection(_connStr);
-            await conn.OpenAsync(ct);
+            // Created-at epoch ms.
+            var createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            long id;
 
-            var ts = DateTimeOffset.UtcNow.ToString("o");
+            using (var conn = new SqliteConnection(_connectionString))
+            {
+                await conn.OpenAsync(ct);
 
-            await using var tx = await conn.BeginTransactionAsync(ct);
-            var sqliteTx = (SqliteTransaction)tx;
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText =
+                        "INSERT INTO messages (created_at, sender, text) " +
+                        "VALUES ($created_at, $sender, $text); " +
+                        "SELECT last_insert_rowid();";
 
-            var ins = conn.CreateCommand();
-            ins.Transaction = sqliteTx;
-            ins.CommandText =
-                "INSERT INTO messages(sender, text, created_at) " +
-                "VALUES($s,$t,$c); " +
-                "SELECT last_insert_rowid();";
-            ins.Parameters.AddWithValue("$s", sender);
-            ins.Parameters.AddWithValue("$t", text);
-            ins.Parameters.AddWithValue("$c", ts);
+                    cmd.Parameters.AddWithValue("$created_at", createdAt);
+                    cmd.Parameters.AddWithValue("$sender", sender);
+                    cmd.Parameters.AddWithValue("$text", text);
 
-            var idObj = await ins.ExecuteScalarAsync(ct);
-            var id = (long)idObj!;
+                    var obj = await cmd.ExecuteScalarAsync(ct);
+                    id = Convert.ToInt64(obj);
+                }
+            }
 
-            var purge = conn.CreateCommand();
-            purge.Transaction = sqliteTx;
-            purge.CommandText =
-                "DELETE FROM messages " +
-                "WHERE id <= (SELECT IFNULL(MAX(id),0) - 1024 FROM messages);";
-            await purge.ExecuteNonQueryAsync(ct);
+            // Notify subscribers after commit.
+            try
+            {
+                OnInserted?.Invoke(new RepoMessage
+                {
+                    Id        = id,
+                    CreatedAt = createdAt,
+                    Sender    = sender,
+                    Text      = text
+                });
+            }
+            catch
+            {
+                // Never allow subscriber exceptions to bubble; they are best-effort.
+            }
 
-            await tx.CommitAsync(ct);
-            return (id, ts);
+            return (id, createdAt);
         }
 
-        public async Task<List<(long, string, string, string)>> ReadSinceAsync(
+        public async Task<List<RepoMessage>> ReadBacklogAsync(
             long sinceId,
             CancellationToken ct)
         {
-            await using var conn = new SqliteConnection(_connStr);
-            await conn.OpenAsync(ct);
+            var list = new List<RepoMessage>(128);
 
-            var cmd = conn.CreateCommand();
-            cmd.CommandText =
-                "SELECT id, sender, text, created_at " +
-                "FROM messages " +
-                "WHERE id > $id " +
-                "ORDER BY id ASC " +
-                "LIMIT 256;";
-            cmd.Parameters.AddWithValue("$id", sinceId);
-
-            var list = new List<(long, string, string, string)>(capacity: 256);
-
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
+            using (var conn = new SqliteConnection(_connectionString))
             {
-                list.Add(
-                    (reader.GetInt64(0),
-                     reader.GetString(1),
-                     reader.GetString(2),
-                     reader.GetString(3)));
+                await conn.OpenAsync(ct);
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText =
+                        "SELECT id, created_at, sender, text " +
+                        "FROM messages " +
+                        "WHERE id > $since " +
+                        "ORDER BY id ASC;";
+                    cmd.Parameters.AddWithValue("$since", sinceId);
+
+                    using (var reader = await cmd.ExecuteReaderAsync(ct))
+                    {
+                        while (await reader.ReadAsync(ct))
+                        {
+                            var m = new RepoMessage
+                            {
+                                Id        = reader.GetInt64(0),
+                                CreatedAt = reader.GetInt64(1),
+                                Sender    = reader.GetString(2),
+                                Text      = reader.GetString(3)
+                            };
+
+                            list.Add(m);
+                        }
+                    }
+                }
             }
 
             return list;

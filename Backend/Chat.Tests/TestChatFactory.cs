@@ -1,70 +1,79 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using Chat.Server;
+using System.Net.Http;
+using Grpc.Net.Client;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Xunit;
 
 namespace Chat.Tests
 {
     /// <summary>
-    /// Provides a unique SQLite DB per test run, no env vars needed.
+    /// In-process test server using a per-run temp SQLite file.
     /// </summary>
-    public sealed class TestChatFactory : WebApplicationFactory<Program>, IAsyncLifetime
+    public sealed class TestChatFactory : WebApplicationFactory<global::Program>
     {
         private string _dbPath = string.Empty;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            _dbPath = Path.Combine(Path.GetTempPath(), $"chat_{Guid.NewGuid():N}.sqlite");
+            builder.UseEnvironment("Testing");
 
             builder.ConfigureLogging(logging =>
             {
-                logging.SetMinimumLevel(LogLevel.Warning);
+                logging.SetMinimumLevel(LogLevel.Information);
                 logging.AddFilter("Grpc.AspNetCore.Server.ServerCallHandler",
                                   LogLevel.Information);
             });
 
-            builder.ConfigureServices(services =>
+            var dir = Path.Combine(Path.GetTempPath(), "unity-minimal-chat-tests");
+            Directory.CreateDirectory(dir);
+
+            _dbPath = Path.Combine(dir, $"chat_{Guid.NewGuid():N}.sqlite");
+
+            var connString = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
             {
-                var old = services.Where(d => d.ServiceType == typeof(string)).ToList();
-                foreach (var d in old)
-                {
-                    services.Remove(d);
-                }
+                DataSource = _dbPath,
+                Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+                Cache = Microsoft.Data.Sqlite.SqliteCacheMode.Shared
+            }.ToString();
 
-                var connStr = new SqliteConnectionStringBuilder
+            builder.ConfigureAppConfiguration((context, config) =>
+            {
+                var overrides = new Dictionary<string, string?>
                 {
-                    DataSource = _dbPath,
-                    Mode = SqliteOpenMode.ReadWriteCreate
-                }.ToString();
-
-                services.AddSingleton(connStr);
+                    ["Chat:ConnectionString"] = connString,
+                    // Optional: tell Program.cs to drop table in Testing.
+                    ["DROP_DB_ON_STARTUP"] = "1"
+                };
+                config.AddInMemoryCollection(overrides);
             });
+
+            // Backstop if anything reads env directly.
+            Environment.SetEnvironmentVariable("CHAT_CONNECTION", connString);
+            Environment.SetEnvironmentVariable("DROP_DB_ON_STARTUP", "1");
         }
 
-        public Task InitializeAsync() => Task.CompletedTask;
-
-        public new Task DisposeAsync()
+        public GrpcChannel CreateGrpcChannel()
         {
-            try
+            var handler = this.Server.CreateHandler();
+            var httpClient = new HttpClient(handler)
             {
-                if (!string.IsNullOrEmpty(_dbPath) && File.Exists(_dbPath))
-                {
-                    File.Delete(_dbPath);
-                }
-            }
-            catch
-            {
-                // ignore cleanup errors
-            }
+                BaseAddress = new Uri("http://localhost")
+            };
 
-            return Task.CompletedTask;
+            return GrpcChannel.ForAddress(httpClient.BaseAddress!,
+                                          new GrpcChannelOptions
+                                          {
+                                              HttpClient = httpClient
+                                          });
+        }
+
+        public Chat.Proto.ChatService.ChatServiceClient CreateChatClient()
+        {
+            return new Chat.Proto.ChatService.ChatServiceClient(CreateGrpcChannel());
         }
     }
 }

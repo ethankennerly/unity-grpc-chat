@@ -9,7 +9,7 @@ namespace MinimalChat.Tests
 {
     /// <summary>
     /// End-to-end EditMode test: spins up the backend process and exercises RemoteGrpcChatService.
-    /// Requires 'dotnet' available on PATH.
+    /// Requires dotnet to be installed; test is Inconclusive if not found on this machine/session.
     /// </summary>
     public sealed class RemoteGrpc_E2E_EditMode
     {
@@ -19,7 +19,14 @@ namespace MinimalChat.Tests
             var port = PickPort(5005, 5999);
             var baseUrl = "http://127.0.0.1:" + port.ToString();
 
-            using var backend = StartBackend(baseUrl);
+            var dotnetExe = ResolveDotnetPath();
+            if (string.IsNullOrEmpty(dotnetExe))
+            {
+                Assert.Inconclusive("dotnet not found in current Unity test environment PATH. " +
+                                    "Install .NET or expose DOTNET_ROOT / add to PATH.");
+            }
+
+            using var backend = StartBackend(baseUrl, dotnetExe);
             try
             {
                 Assert.IsTrue(await WaitForServer(baseUrl, 8000),
@@ -74,19 +81,25 @@ namespace MinimalChat.Tests
             return rnd.Next(min, max);
         }
 
-        private static Process StartBackend(string baseUrl)
+        private static Process StartBackend(string baseUrl, string dotnetExe)
         {
-            // Run: dotnet run --project Backend/Chat.Server with ASPNETCORE_URLS
-            var psi = new ProcessStartInfo
+            // Create per-test temp DB path
+            var tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "chat-unity-e2e-" + System.Guid.NewGuid().ToString("N") + ".db");
+
+            var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "dotnet",
+                FileName = dotnetExe,
                 Arguments = "run --project Backend/Chat.Server/Chat.Server.csproj --no-build --configuration Debug",
                 WorkingDirectory = GetRepoRoot(),
-                UseShellExecute = false
+                UseShellExecute = false,
+                RedirectStandardOutput = false,
+                RedirectStandardError = false
             };
             psi.Environment["ASPNETCORE_URLS"] = baseUrl;
+            psi.Environment["CHAT_CONNECTION"] = "Data Source=" + tmp;
 
-            return Process.Start(psi);
+            return System.Diagnostics.Process.Start(psi);
         }
 
         private static string GetRepoRoot()
@@ -104,8 +117,9 @@ namespace MinimalChat.Tests
             {
                 try
                 {
+                    // Backend may 404 on '/', but still means Kestrel is up. Treat any response as ready.
                     var res = await http.GetAsync(baseUrl + "/");
-                    if (res.IsSuccessStatusCode)
+                    if (res != null)
                     {
                         return true;
                     }
@@ -133,6 +147,90 @@ namespace MinimalChat.Tests
             catch
             {
             }
+        }
+
+        // ---------- dotnet path resolution -----------------------------------
+
+        private static string ResolveDotnetPath()
+        {
+            // 1) DOTNET_EXE / DOTNET_ROOT envs
+            var fromExe = TryFile(System.Environment.GetEnvironmentVariable("DOTNET_EXE"));
+            if (!string.IsNullOrEmpty(fromExe)) { return fromExe; }
+
+            var dotnetRoot = System.Environment.GetEnvironmentVariable("DOTNET_ROOT");
+            var fromRoot = TryFile(Combine(dotnetRoot, "dotnet"));
+            if (!string.IsNullOrEmpty(fromRoot)) { return fromRoot; }
+
+            var dotnetRootX64 = System.Environment.GetEnvironmentVariable("DOTNET_ROOT_X64");
+            var fromRootX64 = TryFile(Combine(dotnetRootX64, "dotnet"));
+            if (!string.IsNullOrEmpty(fromRootX64)) { return fromRootX64; }
+
+            // 2) Common macOS/Homebrew locations
+            var candidates = new[]
+            {
+                "/usr/local/bin/dotnet",
+                "/opt/homebrew/bin/dotnet",
+                "/usr/local/share/dotnet/dotnet",
+                "/usr/bin/dotnet"
+            };
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                var c = candidates[i];
+                if (System.IO.File.Exists(c)) { return c; }
+            }
+
+            // 3) which dotnet
+            var which = WhichDotnet();
+            if (!string.IsNullOrEmpty(which) && System.IO.File.Exists(which))
+            {
+                return which;
+            }
+
+            return string.Empty;
+        }
+
+        private static string WhichDotnet()
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "/usr/bin/which",
+                    Arguments = "dotnet",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using var p = Process.Start(psi);
+                if (p == null)
+                {
+                    return string.Empty;
+                }
+
+                string output = p.StandardOutput.ReadLine();
+                p.WaitForExit(1000);
+                if (!string.IsNullOrEmpty(output))
+                {
+                    return output.Trim();
+                }
+            }
+            catch { }
+
+            return string.Empty;
+        }
+
+        private static string TryFile(string path)
+        {
+            if (string.IsNullOrEmpty(path)) { return string.Empty; }
+            return System.IO.File.Exists(path) ? path : string.Empty;
+        }
+
+        private static string Combine(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a)) { return string.Empty; }
+            return System.IO.Path.Combine(a, b);
         }
     }
 }

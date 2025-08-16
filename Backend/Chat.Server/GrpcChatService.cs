@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Chat.Proto;
 using Grpc.Core;
@@ -6,7 +10,9 @@ using Microsoft.Extensions.Logging;
 namespace Chat.Server
 {
     /// <summary>
-    /// gRPC chat service with persistence and backlog replay.
+    /// Minimal gRPC chat service:
+    /// - SendMessage: insert and ack id/createdAt.
+    /// - StreamMessages: backlog first, then live via repo's OnInserted.
     /// </summary>
     public sealed class GrpcChatService : ChatService.ChatServiceBase
     {
@@ -42,6 +48,8 @@ namespace Chat.Server
                 await _repo.InsertAsync(request.Sender, request.Text,
                                         context.CancellationToken);
 
+            // NOTE: property names depend on your generated C# from proto.
+            // If it's 'CreatedAt' instead of 'Created_at', adjust here.
             return new SendMessageAck { Id = id, CreatedAt = createdAt };
         }
 
@@ -50,45 +58,87 @@ namespace Chat.Server
             IServerStreamWriter<ChatMessage> responseStream,
             ServerCallContext context)
         {
-            if (request == null)
+            var ct = context.CancellationToken;
+
+            // 1) Backlog: fully flush rows with id > sinceId.
+            var backlog =
+                await _repo.ReadBacklogAsync(request.SinceId, ct);
+
+            for (int i = 0; i < backlog.Count; i++)
             {
-                throw new RpcException(
-                    new Status(StatusCode.InvalidArgument, "request required"));
+                var m = backlog[i];
+
+                await responseStream.WriteAsync(new ChatMessage
+                {
+                    Id        = m.Id,
+                    CreatedAt = m.CreatedAt, // adjust to 'Created_at' if your generator uses snake case
+                    Sender    = m.Sender,
+                    Text      = m.Text
+                });
             }
 
-            var sinceId = request.SinceId;
-            var ct = context.CancellationToken;
+            // 2) Live tail: subscribe to repo inserts and forward until client cancels.
+            var queue = new BlockingCollection<RepoMessage>(
+                new ConcurrentQueue<RepoMessage>());
+
+            void OnInsert(RepoMessage m)
+            {
+                // Early-out: ignore messages at/before the last seen id.
+                if (m.Id <= request.SinceId)
+                {
+                    return;
+                }
+
+                // Non-blocking add; if closed, ignore.
+                try { queue.TryAdd(m); } catch { /* ignore */ }
+            }
+
+            _repo.OnInserted += OnInsert;
 
             try
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    var rows = await _repo.ReadSinceAsync(sinceId, ct);
-
-                    for (int i = 0; i < rows.Count; i++)
+                    // Wait for next live message or cancellation.
+                    RepoMessage m;
+                    try
                     {
-                        var row = rows[i];
-                        await responseStream.WriteAsync(new ChatMessage
+                        if (!queue.TryTake(out m!, 250, ct))
                         {
-                            Id = row.Item1,
-                            Sender = row.Item2,
-                            Text = row.Item3,
-                            CreatedAt = row.Item4
-                        });
-
-                        sinceId = row.Item1;
+                            // Periodic check for cancellation; keep loop simple.
+                            continue;
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
                     }
 
-                    await Task.Delay(100, ct);
+                    // Forward to client.
+                    await responseStream.WriteAsync(new ChatMessage
+                    {
+                        Id        = m.Id,
+                        CreatedAt = m.CreatedAt, // or Created_at
+                        Sender    = m.Sender,
+                        Text      = m.Text
+                    });
+
+                    // Advance sinceId so we never resend.
+                    request.SinceId = m.Id;
                 }
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (!(ex is OperationCanceledException))
             {
-                _logger.LogInformation("StreamMessages canceled by client.");
+                _logger.LogInformation(ex, "StreamMessages ended with exception.");
+                // gRPC will translate thrown exceptions; we log and complete gracefully.
             }
-            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
+            finally
             {
-                _logger.LogInformation("StreamMessages RPC canceled by client.");
+                // Unsubscribe and drain.
+                _repo.OnInserted -= OnInsert;
+                queue.Dispose();
+
+                _logger.LogInformation("StreamMessages canceled by client.");
             }
         }
 
