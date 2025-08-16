@@ -2133,7 +2133,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _scrollRect: {fileID: 3423824500225728624}
-  _diagnostics: 1
+  _diagnostics: 0
 --- !u!1 &7192008353155595022
 GameObject:
   m_ObjectHideFlags: 0

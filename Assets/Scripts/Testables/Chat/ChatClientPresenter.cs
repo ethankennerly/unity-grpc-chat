@@ -183,47 +183,56 @@ namespace MinimalChat
                 ct).ConfigureAwait(false);
         }
 
+        // Replace the whole method with this version.
         private async Task SendFromViewAsync()
         {
+            // Guard: service must exist.
             if (_service == null)
             {
                 Debug.LogWarning("Service not started.");
                 return;
             }
 
+            // Read and trim inputs.
             var nameRaw = _view.GetDisplayName();
             var textRaw = _view.GetMessageInput();
 
             var name = nameRaw == null ? "" : nameRaw.Trim();
             var text = textRaw == null ? "" : textRaw.Trim();
 
+            // Validate before sending.
             if (!_validator.CanSend(name, text))
             {
                 Debug.LogWarning("Enter a valid ASCII message <= 1024 chars.");
                 return;
             }
 
+            // Build request.
             var req = new SendMessageRequest
             {
                 Sender = name,
                 Text = text
             };
 
-            // Single send; capture ack and advance last id to avoid duplicate when stream echoes it back.
-            var ack = await _service.SendMessageAsync(req, CancellationToken.None)
-                .ConfigureAwait(false);
-
-            if (ack != null && ack.Id > _lastReceivedId)
+            // Send to server. We intentionally DO NOT:
+            // - advance _lastReceivedId from the ack
+            // - render a local echo
+            //
+            // We wait for the same message to come back on the stream and render once.
+            try
             {
-                _lastReceivedId = ack.Id;
+                var ack = await _service
+                    .SendMessageAsync(req, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                // Clear input after successful send.
+                _view.ClearMessageInput();
             }
-
-            // Outgoing expects a local DateTime.
-            var whenLocal = DateTime.Now;
-            var line = _formatter.FormatOutgoing(name, text, whenLocal);
-            AppendAndRender(line);
-
-            _view.ClearMessageInput();
+            catch (Exception ex)
+            {
+                // Log and leave input intact so user can retry/edit.
+                Debug.LogWarning("Send failed: " + ex.Message);
+            }
         }
 
         private void AppendAndRender(string line)
